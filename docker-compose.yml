@@ -46,3 +46,14 @@ services:
       - "4001:4001"
       - "4002:4002"
       - "5901:5900"
+
+# simple SMPT server for development - webapp port 1080, SMTP port 1025
+# i.e. web: http://192.168.1.200:1080/
+#  maildev:
+#    image: maildev/maildev
+#    ports:
+#      - "1080:1080"
+#      - "1025:1025"
+#    command:
+#      - incoming-user admin@gmail.com
+#      - incoming-pass admin
