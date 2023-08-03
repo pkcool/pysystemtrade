@@ -12,7 +12,9 @@ class accountBufferingSubSystemLevel(accountCosts):
     def subsystem_turnover(self, instrument_code: str) -> float:
         positions = self.get_subsystem_position(instrument_code)
 
-        average_position_for_turnover = self.get_volatility_scalar(instrument_code)
+        average_position_for_turnover = self.get_average_position_at_subsystem_level(
+            instrument_code
+        )
 
         subsystem_turnover = turnover(positions, average_position_for_turnover)
 
@@ -72,7 +74,7 @@ class accountBufferingSubSystemLevel(accountCosts):
         roundpositions: bool = True,
     ) -> pd.Series:
 
-        self.log.msg("Calculating buffered subsystem positions")
+        self.log.debug("Calculating buffered subsystem positions")
         trade_to_edge = self.config.buffer_trade_to_edge
 
         buffered_position = apply_buffer(

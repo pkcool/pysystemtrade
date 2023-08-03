@@ -52,6 +52,7 @@ from systems.system_cache import input, dont_cache, diagnostic, output
 from systems.positionsizing import PositionSizing
 from systems.accounts.curves.account_curve_group import accountCurveGroup
 from systems.risk_overlay import get_risk_multiplier
+from systems.basesystem import get_instrument_weights_from_config
 
 """
 Stage for portfolios
@@ -84,7 +85,7 @@ class Portfolios(SystemStage):
         KEY OUTPUT
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating actual position for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -107,7 +108,7 @@ class Portfolios(SystemStage):
         KEY OUTPUT
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating actual buffers for position for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -155,7 +156,7 @@ class Portfolios(SystemStage):
     def get_buffers(self, instrument_code: str) -> pd.Series:
 
         position = self.get_notional_position(instrument_code)
-        vol_scalar = self.get_volatility_scalar(instrument_code)
+        vol_scalar = self.get_average_position_at_subsystem_level(instrument_code)
         log = self.log
         config = self.config
         idm = self.get_instrument_diversification_multiplier()
@@ -201,7 +202,7 @@ class Portfolios(SystemStage):
 
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating notional position for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -256,8 +257,8 @@ class Portfolios(SystemStage):
         instrument_weight_this_code = instr_weights[instrument_code]
 
         inst_weight_this_code_reindexed = instrument_weight_this_code.reindex(
-            subsys_position.index
-        ).ffill()
+            subsys_position.index, method="ffill"
+        )
 
         notional_position_without_idm = (
             subsys_position * inst_weight_this_code_reindexed
@@ -309,7 +310,7 @@ class Portfolios(SystemStage):
         2015-12-11  1.133153
         """
 
-        self.log.terse("Calculating instrument div. multiplier")
+        self.log.info("Calculating instrument div. multiplier")
 
         # Get some useful stuff from the config
         div_mult_params = copy(self.config.instrument_div_mult_estimate)
@@ -357,7 +358,7 @@ class Portfolios(SystemStage):
 
         div_mult = self.config.instrument_div_multiplier
 
-        self.log.terse("Using fixed diversification multiplier %f" % div_mult)
+        self.log.info("Using fixed diversification multiplier %f" % div_mult)
 
         # Now we have a fixed weight
         # Need to turn into a two row timeseries covering the range of forecast
@@ -401,7 +402,7 @@ class Portfolios(SystemStage):
          [ 0.99        0.78858156  1.        ]]
         """
 
-        self.log.terse("Calculating instrument correlations")
+        self.log.info("Calculating instrument correlations")
 
         config = self.config
 
@@ -486,7 +487,7 @@ class Portfolios(SystemStage):
 
     @diagnostic()
     def get_unsmoothed_raw_instrument_weights(self) -> pd.DataFrame:
-        self.log.terse("Calculating instrument weights")
+        self.log.info("Calculating instrument weights")
 
         if self.use_estimated_instrument_weights():
             ## will probably be annnual
@@ -534,16 +535,8 @@ class Portfolios(SystemStage):
         2015-12-11  0.333333  0.333333  0.333333
         """
 
-        self.log.msg("Calculating raw instrument weights")
-
-        try:
-            instrument_weights_dict = self.config.instrument_weights
-        except:
-            instrument_weights_dict = self.get_equal_instrument_weights_dict()
-
-        instrument_weights_dict = self._add_zero_instrument_weights(
-            instrument_weights_dict
-        )
+        self.log.debug("Calculating raw instrument weights")
+        instrument_weights_dict = self.get_fixed_instrument_weights_from_config()
 
         # Now we have a dict, fixed_weights.
         # Need to turn into a timeseries covering the range of subsystem positions
@@ -559,6 +552,20 @@ class Portfolios(SystemStage):
 
         return instrument_weights
 
+    @diagnostic()
+    def get_fixed_instrument_weights_from_config(self) -> dict:
+
+        try:
+            instrument_weights_dict = get_instrument_weights_from_config(self.config)
+        except:
+            instrument_weights_dict = self.get_equal_instrument_weights_dict()
+
+        instrument_weights_dict = self._add_zero_instrument_weights(
+            instrument_weights_dict
+        )
+
+        return instrument_weights_dict
+
     @dont_cache
     def get_equal_instrument_weights_dict(self) -> dict:
         instruments_with_weights = self.get_instrument_list(for_instrument_weights=True)
@@ -569,7 +576,7 @@ class Portfolios(SystemStage):
             % (weight, len(instruments_with_weights))
         )
 
-        self.log.warn(warn_msg)
+        self.log.warning(warn_msg)
 
         instrument_weights = dict(
             [(instrument_code, weight) for instrument_code in instruments_with_weights]
@@ -644,6 +651,23 @@ class Portfolios(SystemStage):
 
         return instrument_weights
 
+    def fit_periods(self):
+        # FIXME, NO GUARANTEE THIS OBJECT HAS AN ESTIMATOR UNLESS IT INHERITS FROM
+        # SOME KIND OF BASECLASS
+
+        weight_calculator = self.calculation_of_raw_instrument_weights()
+
+        return weight_calculator.fit_dates
+
+    @diagnostic()
+    def correlation_estimator_for_subsystem_returns(self):
+        # FIXME, NO GUARANTEE THIS OBJECT HAS AN ESTIMATOR UNLESS IT INHERITS FROM
+        # SOME KIND OF BASECLASS
+
+        weight_calculator = self.calculation_of_raw_instrument_weights()
+
+        return weight_calculator.correlation_estimator
+
     @diagnostic(protected=True, not_pickable=True)
     def calculation_of_raw_instrument_weights(self):
 
@@ -664,7 +688,7 @@ class Portfolios(SystemStage):
 
         returns_pre_processor = self.returns_pre_processor()
 
-        self.log.terse("Calculating raw instrument weights")
+        self.log.info("Calculating raw instrument weights")
 
         weight_func = weighting_func(
             returns_pre_processor, log=self.log, **weighting_params
@@ -763,7 +787,7 @@ class Portfolios(SystemStage):
         )
         if len(configured_bad_but_not_configured_zero_allocation) > 0:
             if auto_remove_bad_instruments:
-                self.log.warn(
+                self.log.warning(
                     "*** Following instruments are listed as trading_restrictions and/or bad_markets and will be removed from instrument weight optimisation: ***\n%s"
                     % str(configured_bad_but_not_configured_zero_allocation)
                 )
@@ -772,19 +796,19 @@ class Portfolios(SystemStage):
                     + configured_bad_but_not_configured_zero_allocation
                 )
             else:
-                self.log.warn(
+                self.log.warning(
                     "*** Following instruments are listed as trading_restrictions and/or bad_markets but still included in instrument weight optimisation: ***\n%s"
                     % str(configured_bad_but_not_configured_zero_allocation)
                 )
-                self.log.warn(
+                self.log.warning(
                     "This is fine for dynamic systems where we remove them in later optimisation, but may be problematic for static systems"
                 )
-                self.log.warn(
+                self.log.warning(
                     "Consider adding to config element allocate_zero_instrument_weights_to_these_instruments"
                 )
 
         if len(allocate_zero_instrument_weights_to_these_instruments) > 0:
-            self.log.msg(
+            self.log.debug(
                 "Following instruments will have zero weight in optimisation of instrument weights as configured zero or auto removal of configured bad%s"
                 % str(allocate_zero_instrument_weights_to_these_instruments)
             )
@@ -803,8 +827,8 @@ class Portfolios(SystemStage):
             if empty
         ]
 
-        self.log.msg(
-            "Following instruments will have zero weight in optimisation of instrument weights as they have no positions (possible too expensive?) %s"
+        self.log.debug(
+            "Following instruments will have zero weight in optimisation of instrument weights as they have no positions (possibly too expensive?) %s"
             % str(list_of_empty_markets)
         )
 
@@ -890,7 +914,9 @@ class Portfolios(SystemStage):
         return turnovers
 
     @input
-    def get_volatility_scalar(self, instrument_code: str) -> pd.Series:
+    def get_average_position_at_subsystem_level(
+        self, instrument_code: str
+    ) -> pd.Series:
         """
         Get the vol scalar, from a previous module
 
@@ -908,13 +934,15 @@ class Portfolios(SystemStage):
         ()], data, config)
         >>>
         >>> ## from config
-        >>> system.portfolio.get_volatility_scalar("EDOLLAR").tail(2)
+        >>> system.portfolio.get_average_position_at_subsystem_level("EDOLLAR").tail(2)
                     vol_scalar
         2015-12-10   11.187869
         2015-12-11   10.332930
         """
 
-        return self.position_size_stage.get_volatility_scalar(instrument_code)
+        return self.position_size_stage.get_average_position_at_subsystem_level(
+            instrument_code
+        )
 
     @input
     def capital_multiplier(self):
@@ -935,7 +963,7 @@ class Portfolios(SystemStage):
             "risk_overlay"
         )
         if risk_overlay_config is arg_not_supplied:
-            self.log.msg("No risk overlay in config: won't apply risk scaling")
+            self.log.debug("No risk overlay in config: won't apply risk scaling")
             return 1.0
 
         normal_risk = self.get_portfolio_risk_for_original_positions()
