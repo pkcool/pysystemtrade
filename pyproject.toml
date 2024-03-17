@@ -12,6 +12,8 @@ classifiers = [
     "Operating System :: Linux",
 ]
 
+dynamic = ["license", "keywords", "dependencies", "optional-dependencies"]
+
 [project.urls]
 "Homepage" = "https://github.com/robcarver17/pysystemtrade"
 "Bug Tracker" = "https://github.com/robcarver17/pysystemtrade/issues"
