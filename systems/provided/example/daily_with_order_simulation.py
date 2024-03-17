@@ -30,7 +30,6 @@ def futures_system(
     use_vanilla_accounting: bool = False,
     config_filename="systems.provided.example.daily_with_order_simulation.yaml",
 ):
-
     if sim_data is arg_not_supplied:
         sim_data = dbFuturesSimData()
 
@@ -52,6 +51,5 @@ def futures_system(
         sim_data,
         config,
     )
-    system.set_logging_level("on")
 
     return system

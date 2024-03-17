@@ -9,21 +9,16 @@ from syscore.exceptions import missingData
 from syscore.constants import arg_not_supplied
 
 TICK_REQUIRED_COLUMNS = ["bid_price", "ask_price", "bid_size", "ask_size"]
-TICK_REQUIRED_COLUMNS.sort()
 
 
 class dataFrameOfRecentTicks(pd.DataFrame):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         columns = self.columns
-        sorted_columns = sorted(columns)
 
-        try:
-            assert all([x == y for x, y in zip(sorted_columns, TICK_REQUIRED_COLUMNS)])
-        except:
-            raise Exception(
-                "historical ticks should have columns %s" % str(TICK_REQUIRED_COLUMNS)
-            )
+        assert set(TICK_REQUIRED_COLUMNS).issubset(
+            columns
+        ), "historical ticks should have columns %s" % str(TICK_REQUIRED_COLUMNS)
 
     def average_bid_offer_spread(self, remove_negative=True) -> float:
         return average_bid_offer_spread(self, remove_negative=remove_negative)
@@ -42,7 +37,6 @@ def analyse_tick_data_frame(
     forward_fill: bool = False,
     replace_qty_nans=False,
 ):
-
     if tick_data.is_empty():
         raise missingData("Tick data is empty")
 
@@ -94,7 +88,9 @@ def extract_nth_row_of_tick_data_frame(
     bid_size = filled_data.bid_size.values[row_id]
     ask_size = filled_data.ask_size.values[row_id]
 
-    return oneTick(bid_price, ask_price, bid_size, ask_size)
+    return oneTick(
+        bid_price=bid_price, ask_price=ask_price, bid_size=bid_size, ask_size=ask_size
+    )
 
 
 def average_bid_offer_spread(
@@ -260,7 +256,6 @@ class tickerObject(object):
     def wait_for_valid_bid_and_ask_and_analyse_current_tick(
         self, qty: int = arg_not_supplied, wait_time_seconds: int = 10
     ) -> oneTick:
-
         current_tick = self.wait_for_valid_bid_and_ask_and_return_current_tick(
             wait_time_seconds=wait_time_seconds
         )
@@ -401,7 +396,6 @@ def get_next_n_ticks_from_ticker_object(
 def from_list_of_ticks_to_dataframe(
     list_of_ticks: List[oneTick],
 ) -> dataFrameOfRecentTicks:
-
     fields = TICK_REQUIRED_COLUMNS
 
     value_dict = {}

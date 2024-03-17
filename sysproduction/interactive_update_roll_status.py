@@ -54,7 +54,6 @@ EXIT_CODE = "EXIT"
 
 
 def interactive_update_roll_status():
-
     with dataBlob(log_name="Interactive_Update-Roll-Status") as data:
         api = reportingApi(data)
         function_to_call = get_rolling_master_function()
@@ -97,13 +96,13 @@ class RollDataWithStateReporting(object):
     days_until_roll: int
     relative_volume: float
     absolute_forward_volume: int
+    days_until_expiry: int
 
     @property
     def original_roll_status_as_string(self):
         return self.original_roll_status.name
 
     def display_roll_query_banner(self):
-
         print(landing_strip(80))
         print("Current State: %s" % self.original_roll_status)
         print(
@@ -205,7 +204,6 @@ def update_roll_status_full_auto(api: reportingApi, data: dataBlob):
         if roll_state_required is no_change_required:
             warn_not_rolling(instrument_code, auto_parameters)
         else:
-
             modify_roll_state(
                 data=api.data,
                 instrument_code=instrument_code,
@@ -227,7 +225,6 @@ def get_days_ahead_to_consider_when_auto_cycling() -> int:
 
 
 def get_list_of_instruments_to_auto_cycle(data: dataBlob, days_ahead: int = 10) -> list:
-
     diag_prices = diagPrices()
     list_of_potential_instruments = (
         diag_prices.get_list_of_instruments_in_multiple_prices()
@@ -251,13 +248,11 @@ def get_list_of_instruments_to_auto_cycle(data: dataBlob, days_ahead: int = 10) 
 def include_instrument_in_auto_cycle(
     data: dataBlob, instrument_code: str, days_ahead: int = 10
 ) -> bool:
-
     days_until_expiry = days_until_earliest_expiry(data, instrument_code)
     return days_until_expiry <= days_ahead
 
 
 def days_until_earliest_expiry(data: dataBlob, instrument_code: str) -> int:
-
     data_contracts = dataContracts(data)
     carry_days = data_contracts.days_until_carry_expiry(instrument_code)
     roll_days = data_contracts.days_until_roll(instrument_code)
@@ -273,6 +268,7 @@ class autoRollParameters:
     min_absolute_volume: float
     near_expiry_days: int
     default_roll_state_if_undecided: RollState
+    auto_roll_expired: bool
 
 
 ASK_FOR_STATE = "Ask"
@@ -305,6 +301,7 @@ def get_auto_roll_parameters_potentially_using_default(
     default_roll_state_if_undecided = default_parameters[
         "default_roll_state_if_undecided"
     ]
+    auto_roll_expired = default_parameters["auto_roll_expired"]
 
     if use_default:
         pass
@@ -331,7 +328,7 @@ def get_auto_roll_parameters_potentially_using_default(
         )
 
         near_expiry_days = get_input_from_user_and_convert_to_type(
-            "Days before expiry when we switch to NO_OPEN instead of NO_ROLL (if forward not liquid), or switch to using the roll status specified next instead of PASSIVE (if forward is liquid)",
+            "Days before desired roll date when we switch to NO_OPEN instead of NO_ROLL (if forward not liquid), or switch to using the roll status specified next instead of PASSIVE (if forward is liquid)",
             type_expected=int,
             allow_default=True,
             default_value=near_expiry_days,
@@ -345,12 +342,17 @@ def get_auto_roll_parameters_potentially_using_default(
             default_value=ASK_FOR_STATE,
         )
 
+        auto_roll_expired = true_if_answer_is_yes(
+            "Automatically roll adjusted prices when a priced contract has expired and no position?"
+        )
+
     auto_parameters = autoRollParameters(
         min_absolute_volume=min_absolute_volume,
         min_relative_volume=min_relative_volume,
         default_roll_state_if_undecided=default_roll_state_if_undecided,
         auto_roll_if_relative_volume_higher_than=auto_roll_if_relative_volume_higher_than,
         near_expiry_days=near_expiry_days,
+        auto_roll_expired=auto_roll_expired,
     )
 
     return auto_parameters
@@ -368,25 +370,25 @@ def default_auto_roll_parameters(data: dataBlob) -> dict:
 
 
 def describe_roll_rules_from_parameters(auto_parameters: autoRollParameters):
-
     print(
         "AUTO ROLL RULES:\n\n"
+        + "%s\n\n" % describe_action_for_auto_roll_expired(auto_parameters)
         + "The test for forward being liquid:\n"
         + "  - if relative volume between current and forward contract > %f, then considered liquid (and no need to check absolute volume)\n"
         % (auto_parameters.auto_roll_if_relative_volume_higher_than)
         + "  - if relative volume between current and forward contract > %f, and if absolute volume contracts>%d, then considered liquid\n\n"
         % (auto_parameters.min_relative_volume, auto_parameters.min_absolute_volume)
-        + "Forward is not liquid. Are we close to the roll point? (is distance to expiry<%d days)\n"
+        + "Forward is not liquid. Are we close to the roll point? (is distance to desired roll date<%d days)\n"
         % (auto_parameters.near_expiry_days)
         + "   -  No, miles away from needing to roll. Trade as normal: NO_ROLL\n"
         + "   -  Yes, going to roll quite soon. Roll status should be NO_OPEN\n\n "
         + "Forward is liquid. Do we have a position on in the price contract??\n"
         + "   - We have no position in the priced contract: ROLL ADJUSTED\n"
         + "   - If we have a position on then:\n"
-        + "      - Do we have plenty of time? (is distance to expiry>%d days)?\n"
+        + "      - Do we have plenty of time? (is distance to desired roll date>%d days)?\n"
         % auto_parameters.near_expiry_days
         + "         - Yes, We have plenty of time PASSIVE ROLL\n"
-        + "         - No, we don't. %s"
+        + "         - No, we don't. %s\n"
         % describe_action_for_default_roll_state_if_undecided(auto_parameters)
     )
 
@@ -402,12 +404,20 @@ def describe_action_for_default_roll_state_if_undecided(
         )
 
 
+def describe_action_for_auto_roll_expired(
+    auto_parameters: autoRollParameters,
+) -> str:
+    if auto_parameters.auto_roll_expired:
+        return "Irrespective of the following, we will automatically roll if a contract has expired and no position"
+    else:
+        return ""
+
+
 def auto_selected_roll_state_instrument(
     api: reportingApi,
     roll_data: RollDataWithStateReporting,
     auto_parameters: autoRollParameters,
 ) -> RollState:
-
     run_roll_report(api, roll_data.instrument_code)
     roll_state_required = suggest_roll_state_for_instrument(
         roll_data=roll_data, auto_parameters=auto_parameters
@@ -436,14 +446,20 @@ def suggest_roll_state_for_instrument(
     roll_data: RollDataWithStateReporting,
     auto_parameters: autoRollParameters,
 ) -> RollState:
-
     forward_liquid = check_if_forward_liquid(
         roll_data=roll_data, auto_parameters=auto_parameters
     )
-    getting_close_to_expiry = check_if_getting_close_to_expiry(
+    getting_close_to_desired_roll_date = check_if_getting_close_to_desired_roll_date(
         roll_data=roll_data, auto_parameters=auto_parameters
     )
     no_position_held = roll_data.position_priced_contract == 0
+    expired_and_auto_rolling_expired = check_if_expired_and_auto_rolling_expired(
+        roll_data=roll_data, auto_parameters=auto_parameters
+    )
+
+    if expired_and_auto_rolling_expired and no_position_held:
+        ## contract expired so roll regardless of liquidity
+        return RollState.Roll_Adjusted
 
     if forward_liquid:
         if no_position_held:
@@ -451,7 +467,7 @@ def suggest_roll_state_for_instrument(
             return RollState.Roll_Adjusted
         else:
             ## liquid forward, with position held
-            if getting_close_to_expiry:
+            if getting_close_to_desired_roll_date:
                 ## liquid forward, with position, close to expiry
                 ##   Up to the user to decide
                 return auto_parameters.default_roll_state_if_undecided
@@ -460,7 +476,7 @@ def suggest_roll_state_for_instrument(
                 return RollState.Passive
     else:
         # forward illiquid
-        if getting_close_to_expiry:
+        if getting_close_to_desired_roll_date:
             ## forward illiqud and getting close
             # We don't want to trade the forward - it's not liquid yet.
             # And we don't want to open a position or increase it in the current
@@ -497,15 +513,24 @@ def check_if_forward_liquid(
     return False
 
 
-def check_if_getting_close_to_expiry(
+def check_if_getting_close_to_desired_roll_date(
     roll_data: RollDataWithStateReporting,
     auto_parameters: autoRollParameters,
 ):
+    ## close to desired roll date, not technnically 'expiry'
     return roll_data.days_until_roll < auto_parameters.near_expiry_days
 
 
-def warn_not_rolling(instrument_code: str, auto_parameters: autoRollParameters):
+def check_if_expired_and_auto_rolling_expired(
+    roll_data: RollDataWithStateReporting, auto_parameters: autoRollParameters
+) -> bool:
+    expired = roll_data.days_until_expiry <= 0
+    auto_rolling_expired = auto_parameters.auto_roll_expired
 
+    return expired and auto_rolling_expired
+
+
+def warn_not_rolling(instrument_code: str, auto_parameters: autoRollParameters):
     print_with_landing_strips_around(
         "\nNo change to rolling status for %s given parameters %s\n"
         % (instrument_code, str(auto_parameters))
@@ -536,7 +561,6 @@ def manually_update_roll_state_for_code(
     # First get the roll info
     # This will also update to console
 
-    data.log.setup(instrument_code=instrument_code)
     roll_state_suggested = suggest_roll_state_for_instrument(
         roll_data=roll_data, auto_parameters=auto_parameters
     )
@@ -631,6 +655,7 @@ def setup_roll_data_with_state_reporting(
     )
 
     days_until_roll = diag_contracts.days_until_roll(instrument_code)
+    days_until_expiry = diag_contracts.days_until_price_expiry(instrument_code)
 
     relative_volume = relative_volume_in_forward_contract_versus_price(
         data=data, instrument_code=instrument_code
@@ -641,7 +666,7 @@ def setup_roll_data_with_state_reporting(
     if np.isnan(relative_volume):
         relative_volume = 0.0
     if np.isnan(absolute_forward_volume):
-        forward_volume = 0
+        absolute_forward_volume = 0
 
     roll_data_with_state = RollDataWithStateReporting(
         instrument_code=instrument_code,
@@ -651,6 +676,7 @@ def setup_roll_data_with_state_reporting(
         days_until_roll=days_until_roll,
         relative_volume=relative_volume,
         absolute_forward_volume=absolute_forward_volume,
+        days_until_expiry=days_until_expiry,
     )
 
     return roll_data_with_state
@@ -663,7 +689,6 @@ def modify_roll_state(
     roll_state_required: RollState,
     confirm_adjusted_price_change: bool = True,
 ):
-
     roll_state_is_unchanged = (roll_state_required is no_change_required) or (
         roll_state_required is original_roll_state
     )
@@ -795,7 +820,6 @@ def get_roll_adjusted_multiple_prices_object(
     data: dataBlob,
     instrument_code: str,
 ) -> rollingAdjustedAndMultiplePrices:
-
     ## returns failure if goes wrong
     try:
         rolling_adj_and_mult_object = rollingAdjustedAndMultiplePrices(
@@ -820,7 +844,6 @@ def get_roll_adjusted_multiple_prices_object(
 def _get_roll_adjusted_multiple_prices_object_ffill_option(
     data: dataBlob, instrument_code: str
 ) -> rollingAdjustedAndMultiplePrices:
-
     ## returns failure if goes wrong
     try_forward_fill = true_if_answer_is_yes(
         "Do you want to try forward filling prices first (less accurate, but guarantees roll)? [y/n]"
@@ -882,7 +905,6 @@ def check_trading_limits_for_roll_state(
 def calculate_abs_trades_required_for_roll(
     data: dataBlob, roll_state_required: RollState, instrument_code: str
 ) -> float:
-
     data_contacts = dataContracts(data)
     diag_positions = diagPositions(data)
     current_priced_contract_id = data_contacts.get_priced_contract_id(

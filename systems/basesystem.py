@@ -44,7 +44,7 @@ class System(object):
         stage_list: list,
         data: simData,
         config: Config = arg_not_supplied,
-        log: pst_logger = get_logger("base_system"),
+        log=get_logger("base_system"),
     ):
         """
         Create a system object for doing simulations or live trading
@@ -147,24 +147,6 @@ class System(object):
     def stage_names(self):
         return self._stage_names
 
-    def set_logging_level(self, new_log_level: str):
-        """
-
-        Set the log level for the system
-
-        :param new_log_level: one of ["off", "terse", "on"]
-        :type new_log_level: str
-
-        :returns: None
-        """
-
-        self.log.set_logging_level(new_log_level)
-        for stage_name in self._stage_names:
-            stage = getattr(self, stage_name)
-            stage.log.set_logging_level(new_log_level)
-
-        self.data.log.set_logging_level(new_log_level)
-
     # note we have to use this special cache here, or we get recursion problems
     @base_system_cache()
     def get_instrument_list(
@@ -205,7 +187,6 @@ class System(object):
         remove_short_history=False,
         days_required=750,
     ) -> list:
-
         instrument_list = self._get_raw_instrument_list_from_config()
         instrument_list = self._remove_instruments_from_instrument_list(
             instrument_list,
@@ -250,7 +231,6 @@ class System(object):
         remove_short_history=False,
         days_required: int = 750,
     ):
-
         list_of_instruments_to_remove = self.get_list_of_instruments_to_remove(
             remove_duplicates=remove_duplicates,
             remove_short_history=remove_short_history,
@@ -283,7 +263,6 @@ class System(object):
         remove_short_history=False,
         days_required=750,
     ) -> list:
-
         not_trading = self.get_list_of_instruments_to_remove(
             remove_duplicates=remove_duplicates,
             remove_short_history=remove_short_history,
@@ -316,7 +295,6 @@ class System(object):
         remove_short_history=False,
         days_required=750,
     ) -> list:
-
         list_to_remove = []
         if remove_duplicates:
             list_of_duplicates = self.get_list_of_duplicate_instruments_to_remove()
@@ -413,7 +391,6 @@ class System(object):
 
 
 def get_instrument_weights_from_config(config: Config) -> dict:
-
     instrument_weights_config = getattr(config, "instrument_weights", None)
     if instrument_weights_config is None:
         raise Exception("Instrument config not available")

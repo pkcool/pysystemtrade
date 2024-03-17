@@ -124,7 +124,6 @@ class accountCosts(accountInputs):
     def _get_forecast_length_weighting_for_list_of_instruments(
         self, instrument_code_list: list, rule_variation_name: str
     ) -> list:
-
         forecast_lengths = [
             self._get_forecast_length_for_instrument_rule(
                 instrument_code, rule_variation_name
@@ -150,7 +149,6 @@ class accountCosts(accountInputs):
     def _get_SR_transaction_cost_of_rule_for_individual_instrument(
         self, instrument_code: str, rule_variation_name: str
     ) -> float:
-
         # note the turnover may still be pooled..
         turnover = self.forecast_turnover(instrument_code, rule_variation_name)
 
@@ -165,7 +163,6 @@ class accountCosts(accountInputs):
     def get_SR_cost_given_turnover(
         self, instrument_code: str, turnover: float
     ) -> float:
-
         SR_cost_trading = self.get_SR_trading_cost_only_given_turnover(
             instrument_code, turnover
         )
@@ -185,8 +182,9 @@ class accountCosts(accountInputs):
 
     def get_SR_holding_cost_only(self, instrument_code: str) -> float:
         cost_per_trade = self.get_SR_cost_per_trade_for_instrument(instrument_code)
-        hold_turnovers = self.get_rolls_per_year(instrument_code) / 2.0
+        hold_turnovers = self.get_rolls_per_year(instrument_code) * 2.0
 
+        ## Assumes no benefit from spread trades i.e. do two seperate trades
         SR_cost_holding = hold_turnovers * cost_per_trade
 
         return SR_cost_holding
@@ -232,7 +230,6 @@ class accountCosts(accountInputs):
     def _forecast_turnover_pooled(
         self, instrument_code: str, rule_variation_name: str
     ) -> float:
-
         instrument_code_list = self.has_same_rules_as_code(instrument_code)
         turnover_for_SR = self._forecast_turnover_for_list(
             instrument_code_list, rule_variation_name=rule_variation_name
@@ -287,7 +284,6 @@ class accountCosts(accountInputs):
     def _forecast_turnover_for_individual_instrument(
         self, instrument_code: str, rule_variation_name: str
     ) -> float:
-
         forecast = self.get_capped_forecast(instrument_code, rule_variation_name)
 
         average_forecast_for_turnover = self.average_forecast()

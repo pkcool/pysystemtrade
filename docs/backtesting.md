@@ -5,6 +5,7 @@ Related documents:
 - [Storing futures and spot FX data](/docs/data.md)
 - [Using pysystemtrade as a production trading environment](/docs/production.md)
 - [Connecting pysystemtrade to interactive brokers](/docs/IB.md)
+- [Recent undocumented changes](/docs/recent_changes.md)
 
 
 This guide is divided into four parts. The first ['How do I?'](#how_do_i)
@@ -244,7 +245,6 @@ multipliers:
 ```python
 from systems.provided.futures_chapter15.estimatedsystem import futures_system
 system=futures_system()
-system.set_logging_level("on")
 system.portfolio.get_notional_position("EDOLLAR")
 ```
 
@@ -813,7 +813,7 @@ read about [system caching and pickling](#caching) before you reload them).
 ```python
 from systems.provided.futures_chapter15.basesystem import futures_system
 
-system = futures_system(log_level="on")
+system = futures_system()
 system.accounts.portfolio().sharpe() ## does a whole bunch of calculations that will be saved in the cache
 
 system.cache.pickle("private.this_system_name.system.pck") ## use any file extension you like
@@ -821,7 +821,7 @@ system.cache.pickle("private.this_system_name.system.pck") ## use any file exten
 ## In a new session
 from systems.provided.futures_chapter15.basesystem import futures_system
 
-system = futures_system(log_level="on")
+system = futures_system()
 system.cache.unpickle("private.this_system_name.system.pck")
 
 ## this will run much faster and reuse previous calculations
@@ -1030,7 +1030,7 @@ from sysdata.sim.db_futures_sim_data import dbFuturesSimData
 data = dbFuturesSimData()
 
 # using with a system
-system = futures_system(log_level="on")
+system = futures_system()
 print(system.accounts.portfolio().sharpe())
 ```
 
@@ -1644,8 +1644,8 @@ get_list_of_instruments_to_remove
 get_list_of_markets_with_trading_restrictions'
 ```
 
-`system.log` and `system.set_logging_level()` provides access to the system's
-log. See [logging](#logging) for more details.
+`system.log` provides access to the system's log. See [logging](#logging) for more 
+details.
 
 <a name="caching"> </a>
 
@@ -1719,7 +1719,7 @@ system.cache.get_cache_refs_for_instrument("EDOLLAR")
 ## if we change the config
 system.config.forecast_div_multiplier=100.0
 
-## ... then the result will be different without neeting to create a new system
+## ... then the result will be different without needing to create a new system
 system.combForecast.get_combined_forecast("EDOLLAR")
 ```
 
@@ -1737,7 +1737,7 @@ weights, will be excluded and won't be reloaded.
 ```python
 from systems.provided.futures_chapter15.basesystem import futures_system
 
-system = futures_system(log_level="on")
+system = futures_system()
 system.accounts.portfolio().sharpe() ## does a whole bunch of calculations that will be saved in the cache. A bit slow...
 
 system.cache.get_itemnames_for_stage("accounts") # includes 'portfolio'
@@ -1750,7 +1750,7 @@ system.cache.pickle("private.this_system_name.system.pck") ## Using the 'dot' me
 
 
 ## Now in a new session
-system = futures_system(log_level="on")
+system = futures_system()
 system.cache.get_items_with_data() ## check empty cache
 
 system.cache.unpickle("private.this_system_name.system.pck")
@@ -2077,7 +2077,7 @@ from systems.portfolio import Portfolios
 from systems.accounts.accounts_stage import Account
 
 
-def futures_system(data=None, config=None, trading_rules=None, log_level="on"):
+def futures_system(data=None, config=None, trading_rules=None):
     if data is None:
         data = csvFuturesSimData()
 
@@ -2090,8 +2090,6 @@ def futures_system(data=None, config=None, trading_rules=None, log_level="on"):
     ## build the system
     system = System([Account(), Portfolios(), PositionSizing(), RawData(), ForecastCombine(),
                      ForecastScaleCap(), rules], data, config)
-
-    system.set_logging_level(log_level)
 
     return system
 ```
@@ -3854,7 +3852,7 @@ These functions are used internally whenever a file name is passed in, so feel f
 
 ### Basic logging
 
-pysystemtrade uses the [Python logging module](https://docs.python.org/3.8/library/logging.html). The system, data, config and each stage object all have a .log attribute, to allow the system to report to the user; as do the functions provided to estimate correlations and do optimisations.
+pysystemtrade uses the [Python logging module](https://docs.python.org/3.10/library/logging.html). The system, data, config and each stage object all have a .log attribute, to allow the system to report to the user; as do the functions provided to estimate correlations and do optimisations.
 
 By default, log messages will print out to the console (`std.out`) at level DEBUG. This what you get in sim. This is configured by function `_configure_sim()` in `syslogging.logger.py`.
 
@@ -3891,7 +3889,7 @@ I strongly encourage the use of logging, rather than printing, since printing on
 
 ### Advanced logging
 
-In my experience wading through long log files is a rather time-consuming experience. On the other hand it's often more useful to use a logging approach to monitor system behaviour than to try and create quantitative diagnostics. For this reason I'm a big fan of logging with *attributes*. This project uses a custom version of [logging.LoggerAdapter](https://docs.python.org/3.8/library/logging.html#loggeradapter-objects) for that purpose:
+In my experience wading through long log files is a rather time-consuming experience. On the other hand it's often more useful to use a logging approach to monitor system behaviour than to try and create quantitative diagnostics. For this reason I'm a big fan of logging with *attributes*. This project uses a custom version of [logging.LoggerAdapter](https://docs.python.org/3.10/library/logging.html#loggeradapter-objects) for that purpose:
 
 ```python
 from syslogging.logger import *

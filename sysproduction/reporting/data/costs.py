@@ -6,7 +6,8 @@ import pandas as pd
 
 from syscore.exceptions import missingContract, missingData
 from syscore.interactive.progress_bar import progressBar
-
+from syscore.constants import arg_not_supplied
+from syscore.genutils import list_difference
 from sysdata.data_blob import dataBlob
 
 from sysobjects.contracts import futuresContract
@@ -34,7 +35,6 @@ def get_SR_cost_calculation_for_instrument(
     include_commission: bool = True,
     include_spread: bool = True,
 ):
-
     diag_instruments = diagInstruments(data)
     costs_object = diag_instruments.get_cost_object(instrument_code)
     if not include_spread:
@@ -76,7 +76,6 @@ def get_SR_cost_calculation_for_instrument(
 def adjust_df_costs_show_ticks(
     data: dataBlob, combined_df_costs: pd.DataFrame
 ) -> pd.DataFrame:
-
     tick_adjusted_df_costs = copy(combined_df_costs)
     list_of_instrument_codes = list(tick_adjusted_df_costs.index)
     series_of_tick_values = get_series_of_tick_values(data, list_of_instrument_codes)
@@ -119,7 +118,6 @@ def get_series_of_tick_values(
 def get_tick_value_for_instrument_code(
     instrument_code: str, broker_data: dataBroker, contract_data: dataContracts
 ) -> float:
-
     try:
         contract_id = contract_data.get_priced_contract_id(instrument_code)
     except missingData:
@@ -142,7 +140,6 @@ def get_tick_value_for_instrument_code(
 def get_combined_df_of_costs(
     data: dataBlob, start_date: datetime.datetime, end_date: datetime.datetime
 ) -> pd.DataFrame:
-
     bid_ask_costs, actual_trade_costs, order_count = get_costs_from_slippage(
         data, start_date, end_date
     )
@@ -192,7 +189,6 @@ def best_estimate_from_cost_data(
     trades_to_count_as_config=10,
     samples_to_count_as_config=150,
 ) -> pd.Series:
-
     worst_execution = pd.concat([bid_ask_costs, actual_trade_costs], axis=1)
     worst_execution = worst_execution.max(axis=1)
 
@@ -307,7 +303,6 @@ def order_count_by_instrument(list_of_orders):
 def get_average_half_spread_by_instrument_from_raw_slippage(
     raw_slippage, use_column="bid_ask"
 ):
-
     half_spreads_as_slippage = raw_slippage[use_column]
     half_spreads = -half_spreads_as_slippage
     half_spreads.index = raw_slippage.instrument_code
@@ -318,10 +313,16 @@ def get_average_half_spread_by_instrument_from_raw_slippage(
 
 
 def get_table_of_SR_costs(
-    data, include_commission: bool = True, include_spread: bool = True
+    data,
+    include_commission: bool = True,
+    include_spread: bool = True,
+    exclude_instruments: list = arg_not_supplied,
 ):
     diag_prices = diagPrices(data)
     list_of_instruments = diag_prices.get_list_of_instruments_in_multiple_prices()
+
+    if exclude_instruments is not arg_not_supplied:
+        list_of_instruments = list_difference(list_of_instruments, exclude_instruments)
 
     print("Getting SR costs")
     p = progressBar(len(list_of_instruments))
